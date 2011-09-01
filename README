@@ -1,0 +1,106 @@
+Delphi Unit (tested on D7, should work on any version) that allows you to open, change, print and similar things on spread sheets using Excel or OpenOffice in a transparent way: The code uses the app. you have installed or that better suits the file type you are using.
+
+Most of the procedures in this object are dual: They behaves differently depending on the app. being used (Excel/OpenOffice), but please note that some functions could not be achieved in one of the two apps.
+
+// *******************************************************
+// ** Delphi object for dual SpreadSheet managing using **
+// ** Excel or OpenOffice in a transparent way.         **
+// ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
+// ** Version 1.00 30-06-2011 (DDMMYYYY)                **
+// ** Use it freely, change it, etc. at will.           **
+// ** Updates: Search for sergio-hcsoft in github:      **
+// **      sergio-hcsoft/Delphi-SpreadSheets.git        **
+// *******************************************************
+
+{EXAMPLE OF USE
+  //Create object: We have two flavours:
+  //(A) from an existing file...
+  HCalc:= THojaCalc.create(OpenDialog.FileName, false);
+  //(B) from a blank document...
+  HCalc:= THojaCalc.create(thcOpenOffice, true); //OpenOffice doc if possible, please
+  HCalc.FileName:= 'C:\MyNewDoc'; //Needs a file name before you SaveDoc!
+  //--end of creation.
+  HCalc.ActivateSheetByIndex(2); //Activate second sheet
+  if HCalc.IsActiveSheetProtected then
+    ShowMessageHC('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
+  //Change a cell value.
+  if HCalc.CellText[i,2] = '' then HCalc.CellText[i,2] := 'Hello world!';
+  HCalc.AddNewSheet('New Sheet');
+  HCalc.PrintDoc;
+  HCalc.SaveDoc;
+  HCalc.Free;
+}
+
+{TODO LIST:
+  -PrintActiveSheet is not working for OpenOffice (is it even possible?)
+  -Listener for OpenOffice so I can be notified if user visually close the doc.
+}
+
+{CHANGE LOG:
+ V1.00:
+   -Saving in Excel2007 will use Excel97 .xls file format instead of .xlsx
+ V0.99:
+   -Added a funtion by Alex Smith to set a cell text into italic.
+ V0.98:
+   -Added two procedures to easily send a number or a date to a cell position:
+   SendDate(Row, Col, Date) and SendNumber(Row, Col, Float), if you look at
+   the code you will notice that this is not so trivial as one could spect.
+   -I have added (as comments) some useful code found on forums (copy-paste rows)
+ V0.97:
+   -Added CellFormula(col, row), similar to CellText, but allows to set a cell
+   to a number wihout the efect of being considered by excel like a "text that
+   looks like a number" (doesn't affect OpenOffice). Use it like this:
+   CellFormula(1,1):= '=A2*23211.66';
+   Note1: Excel will always spect numbers in this shape: no thousand separator
+          and dot as decimal separator, regardless of your local configuration.
+   Note2: Date is also bad interpreted in Excel, in this case you can use
+          CellText but the date must be in american format: MM/DD/YYYY, if you
+          use other format, it will try to interpret as an american date and
+          only if it fails will use your local date format to "decode" it.
+ V0.96:
+   -Added PrintSheetsUntil(LastSheetName: string) -only works on excel- to print
+   out all tabs from 1 until -excluded- the one with the given name in such a
+   way that only one print job is created instead of one per tab (only way to do
+   this in previous versions, so converting part of a excel to a single PDF
+   using a printer like PDFCreator was not posible).
+ V0.95:
+   -ActivateSheetByIndex detect imposible index and allows to insert sheet 100 (it will create all necesary sheets)
+   -SaveDocAs added a second optional parameter for OOo to use Excel97 format (rescued from V0.93 by Rômulo)
+   -A little stronger ValidateSheetName() (filter away \ and " too).
+ V0.94:
+   -OpenOffice V2 compatible (small changes)
+   -A lot of "try except" to avoid silly errors.
+   -SaveDocAs(Name: string): boolean; (Added by Massimiliano Gozzi)
+   -New function FileName2URL(Name) to convert from FileName to URL (OOo SaveDosAs)
+   -New function ooCreateValue to hide all internals of OOo params creation
+ V0.93:
+   ***************************
+   ** By Rômulo Silva Ramos **
+   ***************************
+   -FontSize(Row, Col, Size): change font size in that cell.
+   -BackgroundColor(row, col: integer; color:TColor);
+   -Add ValidateSheetName to validate sheet names when adding or renaming a sheet
+   REVERTED FUNCTIONS (not neccesary in newer version V0.95 anymore)
+   -Change AddNewSheet to add a new sheet in end at sheet list
+   *REVERTED IN V0.95*
+       It creates sheet following the active one, so to add at the end:
+       ActivateSheetByIndex(CountSheets);
+       AddNewSheet('Sheet '+IntToStr(CountSheets+1));
+   -Change in SaveDoc to use SaveAs/StoreAsUrl
+   *REVERTED V0.95*
+       Use SaveDocAs(Name, true) for StoreAsUrl in Excel97 format.
+ V0.92:
+   -SetActiveSheetName didn't change the name to the right sheet on OpenOffice.
+   -PrintPreview: New procedure to show up the print preview window.
+   -Bold(Row, Col): Make bold the text in that cell.
+   -ColumnWidth(col, width): To change a column width.
+ V0.91:
+   -NewDoc: New procedure for creating a blank doc (used in create)
+   -Create from empty doc adds a blank document and take visibility as parameter.
+   -New functions ooCreateValue and ooDispatch to clean up the code.
+   -ActiveSheetName: Now is a read-write property, not a read-only function.
+   -Visible: Now is a read-write property instead of a create param only.
+ V0.9:
+  -Create from empty doc now tries both programs (if OO fails try to use Excel).
+  -CellTextByName: Didn't work on Excel docs.
+}

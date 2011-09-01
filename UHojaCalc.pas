@@ -1,11 +1,12 @@
-// ********************************************
-// ** Object for dual  SpreadSheet  managing **
-// ** using Excel or OpenOffice automaticaly **
-// ** By: Sergio Hernandez                   **
-// ** oficina(at)hcsoft.net, CopyLeft 2009   **
-// ** Version 1.00 30-06-2011 (DDMMYYYY)     **
-// ** Use it freely, change it, etc.         **
-// ********************************************
+// *******************************************************
+// ** Delphi object for dual SpreadSheet managing using **
+// ** Excel or OpenOffice in a transparent way.         **
+// ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
+// ** Version 1.00 30-06-2011 (DDMMYYYY)                **
+// ** Use it freely, change it, etc. at will.           **
+// ** Updates: Search for sergio-hcsoft in github:      **
+// **      sergio-hcsoft/Delphi-SpreadSheets.git        **
+// *******************************************************
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -18,7 +19,7 @@
   HCalc.ActivateSheetByIndex(2); //Activate second sheet
   if HCalc.IsActiveSheetProtected then
     ShowMessageHC('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
-  //Change a cell value (well, change formula, not the double float value)
+  //Change a cell value.
   if HCalc.CellText[i,2] = '' then HCalc.CellText[i,2] := 'Hello world!';
   HCalc.AddNewSheet('New Sheet');
   HCalc.PrintDoc;
@@ -28,19 +29,19 @@
 
 {TODO LIST:
   -PrintActiveSheet is not working for OpenOffice (is it even possible?)
-  -Listener for OpenOffice so I can be noticed if user visually close the doc.
+  -Listener for OpenOffice so I can be notified if user visually close the doc.
 }
 
 {CHANGE LOG:
  V1.00:
    -Saving in Excel2007 will use Excel97 .xls file format instead of .xlsx
  V0.99:
-   -Added a funtion by Alex Smith to set a cell texto into italic.
+   -Added a funtion by Alex Smith to set a cell text into italic.
  V0.98:
    -Added two procedures to easily send a number or a date to a cell position:
    SendDate(Row, Col, Date) and SendNumber(Row, Col, Float), if you look at
-   the code will notice that this is not so trivial as one could spect.
-   -I have added as comment some usefull code found on forums (copy-paste rows)
+   the code you will notice that this is not so trivial as one could spect.
+   -I have added (as comments) some useful code found on forums (copy-paste rows)
  V0.97:
    -Added CellFormula(col, row), similar to CellText, but allows to set a cell
    to a number wihout the efect of being considered by excel like a "text that
@@ -50,7 +51,7 @@
           and dot as decimal separator, regardless of your local configuration.
    Note2: Date is also bad interpreted in Excel, in this case you can use
           CellText but the date must be in american format: MM/DD/YYYY, if you
-          use other format, it will try to interpret as an amarican date and
+          use other format, it will try to interpret as an american date and
           only if it fails will use your local date format to "decode" it.
  V0.96:
    -Added PrintSheetsUntil(LastSheetName: string) -only works on excel- to print
