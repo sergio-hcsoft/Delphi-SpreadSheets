@@ -2,7 +2,7 @@
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.01 07-02-2012 (DDMMYYYY)                **
+// ** Version 1.02 07-02-2012 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
@@ -36,6 +36,7 @@
 }
 
 {CHANGE LOG:
+ V1.02: Creating from a exiting file didn't set the AmericanFormat (thanxs Malte).
  V1.01:
    ***********************
    ** By Malte Tüllmann **
@@ -309,6 +310,11 @@ begin
   //Store values...
   FileName:= Name;
   fVisible:=  MakeVisible;
+  //Create an American format to use when sending numbers or dates to excel
+  GetLocaleFormatSettings( 0, AmericanFormat);
+  AmericanFormat.ThousandSeparator:= ',';
+  AmericanFormat.DecimalSeparator:=  '.';
+  AmericanFormat.ShortDateFormat:=   'mm/dd/yyyy';
   //Open program and document...
   LoadProg;
   LoadDoc;
