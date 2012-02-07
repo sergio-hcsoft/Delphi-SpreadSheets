@@ -2,11 +2,13 @@
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.00 30-06-2011 (DDMMYYYY)                **
+// ** Version 1.01 07-02-2012 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
-// ** Updates: Search for sergio-hcsoft in github:      **
-// **      sergio-hcsoft/Delphi-SpreadSheets.git        **
 // *******************************************************
+
+//Latest version, questions, modifications:
+// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+// https://github.com/sergio-hcsoft/Delphi-SpreadSheets
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -18,7 +20,7 @@
   //--end of creation.
   HCalc.ActivateSheetByIndex(2); //Activate second sheet
   if HCalc.IsActiveSheetProtected then
-    ShowMessageHC('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
+    ShowMessage('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
   //Change a cell value.
   if HCalc.CellText[i,2] = '' then HCalc.CellText[i,2] := 'Hello world!';
   HCalc.AddNewSheet('New Sheet');
@@ -28,11 +30,17 @@
 }
 
 {TODO LIST:
+  -Test on LibreOffice: Some nasty screens opens asking things that should show!
   -PrintActiveSheet is not working for OpenOffice (is it even possible?)
   -Listener for OpenOffice so I can be notified if user visually close the doc.
 }
 
 {CHANGE LOG:
+ V1.01:
+   ***********************
+   ** By Malte Tüllmann **
+   ***********************
+   -Excel2000/2003 save .xls files in a different way than 2007.
  V1.00:
    -Saving in Excel2007 will use Excel97 .xls file format instead of .xlsx
  V0.99:
@@ -454,23 +462,29 @@ begin
   end;
 end;
 
-//Added by Massimiliano Gozzi V0.92
+//Function added by Massimiliano Gozzi on V0.92
 //AsEXcel97 taken form V0.93 by Rômulo Silva Ramos
+//Saving as .xls on Excel 2000/2003 trick by Malte Tüllmann on V1.01
 function THojaCalc.SaveDocAs(Name: string; AsExcel97: boolean = false): boolean;
 var ooParams: variant;
 begin
   result:= false;
   if DocLoaded then begin
     if IsExcel then begin
-      //Excel 2007 will use .xlsx instead of .xls, so we force .xls (excel8)
-      //file format for back compatibility with older excel version and OO.
-      //
-      // 51 = xlOpenXMLWorkbook (without macro's in 2007-2010, xlsx)
-      // 52 = xlOpenXMLWorkbookMacroEnabled (with or without macro's in 2007-2010, xlsm)
-      // 50 = xlExcel12 (Excel Binary Workbook in 2007-2010 with or without macro's, xlsb)
-      // 56 = xlExcel8 (97-2003 format in Excel 2007-2010, xls)
-      // More on this here: http://www.rondebruin.nl/saveas.htm
-      Document.Saveas(Name, 56);
+      if (StrToFloat(Programa.Application.Version, AmericanFormat) < 12) then
+        //Before Excel 2007 this was the method to force SaveAs Excel97 .xls
+        //by Malte Tüllmann on V1.01
+        Document.Saveas(Name, -4143, EmptyParam, EmptyParam, EmptyParam, EmptyParam)
+      else
+        // From Excel 2003 this is the way to force .xls file format (excel8)
+        // for back compatibility with older excel version and OO.
+        //
+        // 51 = xlOpenXMLWorkbook (without macro's in 2007-2010, xlsx)
+        // 52 = xlOpenXMLWorkbookMacroEnabled (with or without macro's in 2007-2010, xlsm)
+        // 50 = xlExcel12 (Excel Binary Workbook in 2007-2010 with or without macro's, xlsb)
+        // 56 = xlExcel8 (97-2003 format in Excel 2007-2010, xls)
+        // More on this here: http://www.rondebruin.nl/saveas.htm
+        Document.Saveas(Name, 56);
       FileName:= Name;
       result:= true;
     end;
