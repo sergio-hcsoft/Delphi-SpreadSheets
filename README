@@ -6,11 +6,13 @@ Most of the procedures in this object are dual: They behaves differently dependi
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.00 30-06-2011 (DDMMYYYY)                **
+// ** Version 1.04 22-02-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
-// ** Updates: Search for sergio-hcsoft in github:      **
-// **      sergio-hcsoft/Delphi-SpreadSheets.git        **
 // *******************************************************
+
+//Latest version, questions, modifications:
+// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+// https://github.com/sergio-hcsoft/Delphi-SpreadSheets
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -22,9 +24,9 @@ Most of the procedures in this object are dual: They behaves differently dependi
   //--end of creation.
   HCalc.ActivateSheetByIndex(2); //Activate second sheet
   if HCalc.IsActiveSheetProtected then
-    ShowMessageHC('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
+    ShowMessage('2nd sheet of name "'+HCalc.ActiveSheetName+'" IS protected');
   //Change a cell value.
-  if HCalc.CellText[i,2] = '' then HCalc.CellText[i,2] := 'Hello world!';
+  IF HCalc.CellText[i,2] = '' THEN HCalc.CellText[i,2] := 'Hello world!';
   HCalc.AddNewSheet('New Sheet');
   HCalc.PrintDoc;
   HCalc.SaveDoc;
@@ -32,11 +34,50 @@ Most of the procedures in this object are dual: They behaves differently dependi
 }
 
 {TODO LIST:
+  -Test on LibreOffice: Some nasty screens opens asking things that should show!
   -PrintActiveSheet is not working for OpenOffice (is it even possible?)
   -Listener for OpenOffice so I can be notified if user visually close the doc.
 }
 
 {CHANGE LOG:
+ V1.04:
+   -New function StillConnectedToApp() to check if user closed app. manually.
+   Note: Useful for previewing doc. in OO using code like this:
+   //
+   HCalc.Visible:= true;
+   if HCalc.IsExcel then begin
+     //Preview of all sheets, one after user close the other...
+     for i:= 1 to HCalc.Document.Sheets.count do
+       HCalc.Document.Sheets[i].PrintOut(,,,true);
+   end else begin
+     //ooDispatcher is just a variant
+     ooDispatcher:= HCalc.Programa.createInstance('com.sun.star.frame.DispatchHelper');
+     ooDispatcher.executeDispatch(HCalc.Document.getCurrentController.getFrame, '.uno:PrintPreview', '', 0, VarArrayCreate([0, -1], varVariant));
+     //OO returns control just after showing, while excel waits for user to close it.
+     //If you don't wait for user to close preview, you will see just a flash:
+     while HCalc.StillConnectedToApp() do
+       sleep(1000);
+   end;
+   //
+ V1.03:
+   *****************************
+   ** Van Coppenolle Philippe **
+   *****************************
+   -Reformated code and renamed vars. with more TRY-EXCEPT zones, more robust.
+   -New function to encapsulate creation of OLE object ConnectToApp()
+   -Create admits new flag to reuse the last created instance of excel.
+   -NewDoc admits new flag to add or not a sheet to the new doc (related to the previous one).
+   -RemoveSheet added in 3 flavours: by index, byname, and all except one name.
+   -Added list of OLE constant for both Excel and OO so you can use them by name in your code.
+   -Added FontColor, Underline and HorizontalAlignment properties to cells.
+   Note: I added some properties so old vars names are still usable:
+         Document, ActiveSheet and Programa.
+ V1.02: Creating from a exiting file didn't set the AmericanFormat (thanxs Malte).
+ V1.01:
+   ***********************
+   ** By Malte Tüllmann **
+   ***********************
+   -Excel2000/2003 save .xls files in a different way than 2007.
  V1.00:
    -Saving in Excel2007 will use Excel97 .xls file format instead of .xlsx
  V0.99:
@@ -50,7 +91,7 @@ Most of the procedures in this object are dual: They behaves differently dependi
    -Added CellFormula(col, row), similar to CellText, but allows to set a cell
    to a number wihout the efect of being considered by excel like a "text that
    looks like a number" (doesn't affect OpenOffice). Use it like this:
-   CellFormula(1,1):= '=A2*23211.66';
+   CellFormula(1,1) := '=A2*23211.66';
    Note1: Excel will always spect numbers in this shape: no thousand separator
           and dot as decimal separator, regardless of your local configuration.
    Note2: Date is also bad interpreted in Excel, in this case you can use
