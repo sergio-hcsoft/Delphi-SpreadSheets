@@ -1,8 +1,10 @@
+{[w=1-125,e=3,k+] for formatter} //
+{[f-] stop formatting}
 // *******************************************************
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.04 22-02-2013 (DDMMYYYY)                **
+// ** Version 1.05 22-02-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
@@ -36,6 +38,11 @@
 }
 
 {CHANGE LOG:
+ V1.05:
+   -Restored "$INCLUDE Compilers.inc" from V1.03 so code is suitable for other
+   versions of delphi (Philipe did this works, I just deleted this line ;-).
+   -Restored 3 commented lines with params. for a code formatter Philipe use. It
+   has no use for others don't using formatters, but it won't harm us!
  V1.04:
    -New function StillConnectedToApp() to check if user closed app. manually.
    Note: Useful for previewing doc. in OO using code like this:
@@ -168,15 +175,22 @@
          Sheet.Rows[r].Copy;
          Sheet.Rows[r+1].Insert(xlDown);
 }
+{[f?] restore formatting}
 
 UNIT UHojaCalc;
 
+//Find this file searching on google, or just try here:
+// https://code.google.com/p/virtual-treeview/source/browse/trunk/Common/Compilers.inc?r=235
+{$INCLUDE Compilers.inc}
 
 INTERFACE
 
 USES
   Windows,
+  {$IFDEF COMPILER_6_UP}
   Variants,
+  {$ELSE}
+  {$ENDIF}
   SysUtils, ComObj, Classes, Graphics, Controls;
 
 CONST
@@ -472,7 +486,7 @@ CONSTRUCTOR THojaCalc.Create (eMyTipo: TTipoHojaCalc; bMakeVisible: boolean; bRe
     m_AmericanFormat := TFormatSettings.Create(Windows.LOCALE_NEUTRAL);
 
   {$ELSE}
-  {$IFDEF COMPILER_7_UP}
+  {$IFDEF COMPILER_8_UP}
     GetLocaleFormatSettings(Windows.LOCALE_NEUTRAL, m_AmericanFormat);
 
   {$ELSE}
@@ -507,7 +521,7 @@ CONSTRUCTOR THojaCalc.Create (strName: string; bMakeVisible: boolean; bReUseExis
     m_AmericanFormat := TFormatSettings.Create(Windows.LOCALE_NEUTRAL);
 
   {$ELSE}
-  {$IFDEF COMPILER_7_UP}
+  {$IFDEF COMPILER_8_UP}
     GetLocaleFormatSettings(Windows.LOCALE_NEUTRAL, m_AmericanFormat);
 
   {$ELSE}
