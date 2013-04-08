@@ -4,7 +4,7 @@
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.06 22-02-2013 (DDMMYYYY)                **
+// ** Version 1.06 08-04-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
