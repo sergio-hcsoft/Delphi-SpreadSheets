@@ -4,13 +4,14 @@
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.05 22-02-2013 (DDMMYYYY)                **
+// ** Version 1.06 22-02-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
 //Latest version, questions, modifications:
-// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+//
 // https://github.com/sergio-hcsoft/Delphi-SpreadSheets
+// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -32,13 +33,19 @@
 }
 
 {TODO LIST:
-  -Test on LibreOffice: Some nasty screens opens asking things that should show!
+  -More test on LibreOffice, it do work but it is mostly untested.
   -PrintActiveSheet is not working for OpenOffice (is it even possible?)
   -Listener for OpenOffice so I can be notified if user visually close the doc.
 }
 
 {CHANGE LOG:
- V1.05:
+ V1.06: (08-04-2013 DD/MM/YYYY)
+   *******************
+   ** Joseph Gordon **
+   *******************
+   -New function Orientation(row, Col, Angle) to rotate the text in a cell.
+   -Auto adjust a column's width using AutoFit(col)
+ V1.05: (22-02-2013 DDMMYYYY)
    -Restored "$INCLUDE Compilers.inc" from V1.03 so code is suitable for other
    versions of delphi (Philipe did this works, I just deleted this line ;-).
    -Restored 3 commented lines with params. for a code formatter Philipe use. It
@@ -49,7 +56,7 @@
    //
    HCalc.Visible:= true;
    if HCalc.IsExcel then begin
-     //Preview of all sheets, one after user close the other...
+     //Preview of all sheets, one after the user closes the other...
      for i:= 1 to HCalc.Document.Sheets.count do
        HCalc.Document.Sheets[i].PrintOut(,,,true);
    end else begin
@@ -421,6 +428,8 @@ TYPE
                 PROCEDURE HorizontalAlignment (row, col: integer; ha: TAlignment);
                 PROCEDURE ColumnWidth (col, width: integer); //Width in 1/100 of mm.
                 PROCEDURE NumberFormat (col, width: integer; strNumberFormat: string);
+                PROCEDURE Orientation(row,Col: integer; Angle: integer);
+                PROCEDURE AutoFit(col: integer); //AutoFix/OptimumWidth
                 //Accesing to the cell content:
                 PROPERTY CellText[f, c: integer]: string read GetCellText write SetCellText;
                 PROPERTY CellFormula[f, c: integer]: string read GetCellFormula write SetCellFormula;
@@ -494,6 +503,7 @@ CONSTRUCTOR THojaCalc.Create (eMyTipo: TTipoHojaCalc; bMakeVisible: boolean; bRe
   {$ENDIF}
   {$ENDIF}
   {$IFDEF COMPILER_7_UP}
+    GetLocaleFormatSettings( 0, m_AmericanFormat);
     m_AmericanFormat.ThousandSeparator := ',';
     m_AmericanFormat.DecimalSeparator := '.';
     m_AmericanFormat.ShortDateFormat := 'mm/dd/yyyy';
@@ -2015,5 +2025,33 @@ FUNCTION THojaCalc.SwapColor (nColor: TColor): TColor;
     result := (c1 SHL 16) + (c2 SHL 8) + c3;
   END {THojaCalc.SwapColor};
 
+
+procedure THojaCalc.Orientation(row,Col: integer; Angle: integer);
+var
+  CellCursor:  Variant;
+  n:  integer;
+begin
+  if DocLoaded then begin
+    if IsExcel then begin
+      Programa.ActiveSheet.Cells[row,Col].Orientation:=Angle;
+    end;
+    if IsOpenOffice then begin
+      ActiveSheet.getCellByPosition(col-1, row-1).RotateAngle:=Angle*100;
+    end;
+  end;
+end;
+
+
+procedure THojaCalc.AutoFit(col: integer); //AutoFix/OptimumWidth
+begin
+  if DocLoaded then begin
+    if IsExcel then begin
+      Programa.ActiveSheet.Columns[col].AutoFit;
+    end;
+    if IsOpenOffice then begin
+      ActiveSheet.getColumns.getByIndex(col-1).OptimalWidth:=true;
+    end;
+  end;
+end;
 
 END {UHojaCalc}.

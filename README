@@ -6,13 +6,14 @@ Most of the procedures in this object are dual: They behaves differently dependi
 // ** Delphi object for dual SpreadSheet managing using **
 // ** Excel or OpenOffice in a transparent way.         **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.05 22-02-2013 (DDMMYYYY)                **
+// ** Version 1.06 22-02-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
 //Latest version, questions, modifications:
-// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+//
 // https://github.com/sergio-hcsoft/Delphi-SpreadSheets
+// http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -34,13 +35,19 @@ Most of the procedures in this object are dual: They behaves differently dependi
 }
 
 {TODO LIST:
-  -Test on LibreOffice: Some nasty screens opens asking things that should show!
+  -More test on LibreOffice, it do work but it is mostly untested.
   -PrintActiveSheet is not working for OpenOffice (is it even possible?)
   -Listener for OpenOffice so I can be notified if user visually close the doc.
 }
 
 {CHANGE LOG:
- V1.05:
+ V1.06: (08-04-2013 DD/MM/YYYY)
+   *******************
+   ** Joseph Gordon **
+   *******************
+   -New function Orientation(row, Col, Angle) to rotate the text in a cell.
+   -Auto adjust a column's width using AutoFit(col)
+ V1.05: (22-02-2013 DDMMYYYY)
    -Restored "$INCLUDE Compilers.inc" from V1.03 so code is suitable for other
    versions of delphi (Philipe did this works, I just deleted this line ;-).
    -Restored 3 commented lines with params. for a code formatter Philipe use. It
@@ -51,7 +58,7 @@ Most of the procedures in this object are dual: They behaves differently dependi
    //
    HCalc.Visible:= true;
    if HCalc.IsExcel then begin
-     //Preview of all sheets, one after user close the other...
+     //Preview of all sheets, one after the user closes the other...
      for i:= 1 to HCalc.Document.Sheets.count do
        HCalc.Document.Sheets[i].PrintOut(,,,true);
    end else begin
