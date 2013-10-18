@@ -1,12 +1,12 @@
-Delphi Unit (tested on D7, should work on any version) that allows you to open, change, print and similar things on spread sheets using Excel or OpenOffice in a transparent way: The code uses the app. you have installed or that better suits the file type you are using.
+Delphi Unit (tested on D7, should work on any version) that allows you to open, change, print and similar things on spread sheets using Excel, OpenOffice or LibreOffice in a transparent way: The code uses the app. you have installed or that better suits the file type you are using.
 
-Most of the procedures in this object are dual: They behaves differently depending on the app. being used (Excel/OpenOffice), but please note that some functions could not be achieved in one of the two apps.
+Most of the procedures in this object are dual: They behaves differently depending on the app. being used (Excel/OpenOffice/LibreOffice), but please note that some functions could not be implemented in one of the two apps.
 
 // *******************************************************
 // ** Delphi object for dual SpreadSheet managing using **
-// ** Excel or OpenOffice in a transparent way.         **
+// ** Excel/OpenOffice/LibreOffice in a transparent way **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.06 08-04-2013 (DDMMYYYY)                **
+// ** Version 1.08 18-10-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
@@ -14,6 +14,7 @@ Most of the procedures in this object are dual: They behaves differently dependi
 //
 // https://github.com/sergio-hcsoft/Delphi-SpreadSheets
 // http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+// http://forum.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=288656#p219641
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -35,12 +36,20 @@ Most of the procedures in this object are dual: They behaves differently dependi
 }
 
 {TODO LIST:
-  -More test on LibreOffice, it do work but it is mostly untested.
-  -PrintActiveSheet is not working for OpenOffice (is it even possible?)
-  -Listener for OpenOffice so I can be notified if user visually close the doc.
+  -PrintActiveSheet is not working for OpenOffice/LibreOffice (even possible?)
 }
 
 {CHANGE LOG:
+ V1.08: (18-10-2013 DD/MM/YYY)
+   ***************************
+   ** By user MARCELVK from **
+   ** forum.openoffice.org  **
+   ***************************
+   -SetTextCell in OpenOffice/LibreOfice case use .string not setFormula().
+   -Added properties LastCol and LastRow to get the bounds of used cells.
+ V1.07: (15-05-2013 DD/MM/YYYY)
+   -From V1.03, trying to open Excel without Excel installed doesn't try to open
+   OO instead, just raise an error. Fixed in create().
  V1.06: (08-04-2013 DD/MM/YYYY)
    *******************
    ** Joseph Gordon **
@@ -69,6 +78,7 @@ Most of the procedures in this object are dual: They behaves differently dependi
      //If you don't wait for user to close preview, you will see just a flash:
      while HCalc.StillConnectedToApp() do
        sleep(1000);
+     //User has manually closed the preview window at this point.
    end;
    //
  V1.03:
@@ -153,6 +163,6 @@ Most of the procedures in this object are dual: They behaves differently dependi
    -New functions ooCreateValue and ooDispatch to clean up the code.
    -ActiveSheetName: Now is a read-write property, not a read-only function.
    -Visible: Now is a read-write property instead of a create param only.
- V0.9:
+ V0.90:
   -Create from empty doc now tries both programs (if OO fails try to use Excel).
   -CellTextByName: Didn't work on Excel docs.

@@ -2,9 +2,9 @@
 {[f-] stop formatting}
 // *******************************************************
 // ** Delphi object for dual SpreadSheet managing using **
-// ** Excel or OpenOffice in a transparent way.         **
+// ** Excel/OpenOffice/LibreOffice in a transparent way **
 // ** By: Sergio Hernandez (oficina(at)hcsoft.net)      **
-// ** Version 1.06 08-04-2013 (DDMMYYYY)                **
+// ** Version 1.08 18-10-2013 (DDMMYYYY)                **
 // ** Use it freely, change it, etc. at will.           **
 // *******************************************************
 
@@ -12,6 +12,7 @@
 //
 // https://github.com/sergio-hcsoft/Delphi-SpreadSheets
 // http://user.services.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=219641
+// http://forum.openoffice.org/en/forum/viewtopic.php?f=21&t=47644&p=288656#p219641
 
 {EXAMPLE OF USE
   //Create object: We have two flavours:
@@ -33,12 +34,20 @@
 }
 
 {TODO LIST:
-  -More test on LibreOffice, it do work but it is mostly untested.
-  -PrintActiveSheet is not working for OpenOffice (is it even possible?)
-  -Listener for OpenOffice so I can be notified if user visually close the doc.
+  -PrintActiveSheet is not working for OpenOffice/LibreOffice (even possible?)
 }
 
 {CHANGE LOG:
+ V1.08: (18-10-2013 DD/MM/YYY)
+   ***************************
+   ** By user MARCELVK from **
+   ** forum.openoffice.org  **
+   ***************************
+   -SetTextCell in OpenOffice/LibreOfice case use .string not setFormula().
+   -Added properties LastCol and LastRow to get the bounds of used cells.
+ V1.07: (15-05-2013 DD/MM/YYYY)
+   -From V1.03, trying to open Excel without Excel installed doesn't try to open
+   OO instead, just raise an error. Fixed in create().
  V1.06: (08-04-2013 DD/MM/YYYY)
    *******************
    ** Joseph Gordon **
@@ -67,6 +76,7 @@
      //If you don't wait for user to close preview, you will see just a flash:
      while HCalc.StillConnectedToApp() do
        sleep(1000);
+     //User has manually closed the preview window at this point.
    end;
    //
  V1.03:
@@ -251,7 +261,8 @@ CONST
    xl4DigitYears = 43; //(&H2B)
    xlMDY = 44; //(&H2C)
    xlTimeLeadingZero = 45; //(&H2D)
-
+   xlCellTypeLastCell = 11;
+   
   { typedef enum XlVAlign }
   xlVAlignBottom = -4107;
   xlVAlignCenter = -4108;
@@ -305,7 +316,7 @@ CONST
   nfPERCENT = 128;  // Description selects percentage number formats. 
   nfTEXT = 256;  // Description selects text number formats. 
   nfDATETIME = 6;  // Description selects number formats which contain date and time. 
-  nfLOGICAL = 1024;  // Description selects boolean number formats. 
+  nfLOGICAL = 1024;  // Description selects boolean number formats.
   nfUNDEFINED = 2048;  // Description is used as a return value if no format exists.
 
 TYPE
@@ -365,6 +376,8 @@ TYPE
                 FUNCTION GetCountSheets: integer;
                 FUNCTION GetActiveSheetName: string;
                 PROCEDURE SetActiveSheetName (strNewName: string); //
+                function  GetLastRow: integer;
+                function  GetLastCol: integer;
                 //Cells stuff...
                 //General input/output of cell content:
                 FUNCTION GetCellText (row, col: integer): string;
@@ -415,6 +428,8 @@ TYPE
                 PROPERTY ActiveSheet: variant read m_vActiveSheet write m_vActiveSheet;
                 PROPERTY ActiveSheetName: string read GetActiveSheetName write SetActiveSheetName;
                 PROPERTY FirstAddedSheet: boolean read m_bFirstAddedSheet; //
+                property LastRow: integer read GetLastRow;
+                property LastCol: integer read GetLastCol;
                 //Cells stuff...
                 //Sending numbers and date to a cell, the easy way:
                 PROCEDURE SendNumber (row, col: integer; v: double);
@@ -478,6 +493,8 @@ CONSTRUCTOR THojaCalc.Create (eMyTipo: TTipoHojaCalc; bMakeVisible: boolean; bRe
         m_eTipo := ConnectToApp(eMyTipo, thcOpenOffice, bReUseExisting);
         IF m_eTipo = thcOpenOffice THEN
           break;
+      //Unlucky? Then let it use whatever it finds on the second try:
+        eMyTipo:= thcNone;
       END {FOR}; //
 
   { Was it able to open any of them? }
@@ -1478,6 +1495,41 @@ PROCEDURE THojaCalc.RemoveAllSheetsExcept (strOldName: string; bCaseSensitive: b
   END {THojaCalc.RemoveAllSheetsExcept};
 
 
+function  THojaCalc.GetLastRow: integer;
+var
+  oCursor: Variant;
+begin
+  result := 0;
+  if DocLoaded then begin
+    if IsExcel then begin
+      result := Programa.ActiveSheet.Cells.SpecialCells(xlCellTypeLastCell, EmptyParam).Row;
+    end;
+    if IsOpenOffice then begin
+      oCursor := ActiveSheet.createCursor;
+      oCursor.gotoEndOfUsedArea(False);
+      result := oCursor.RangeAddress.EndRow;
+    end;
+  end;
+end;
+
+function  THojaCalc.GetLastCol: integer;
+var
+  oCursor: Variant;
+begin
+  result := 0;
+  if DocLoaded then begin
+    if IsExcel then begin
+      result := Programa.ActiveSheet.Cells.SpecialCells(xlCellTypeLastCell, EmptyParam).Column;
+    end;
+    if IsOpenOffice then begin
+      oCursor := ActiveSheet.createCursor;
+      oCursor.gotoEndOfUsedArea(False);
+      result := oCursor.RangeAddress.EndColumn;
+    end;
+  end;
+end;
+
+
 FUNCTION THojaCalc.ValidateSheetName (strName: string): string;
 
 { Clean a Sheet name so it will not cause problems }
@@ -1534,7 +1586,8 @@ PROCEDURE THojaCalc.SetCellText (row, col: integer; strTxt: string);
             m_vPrograma.ActiveCell.Value := strTxt;
           END {IF};
         IF IsOpenOffice THEN
-          m_vActiveSheet.getCellByPosition(col - 1, row - 1).setFormula(strTxt);
+          m_vActiveSheet.getCellByPosition(col - 1, row - 1).string := strTxt;
+          //m_vActiveSheet.getCellByPosition(col - 1, row - 1).setFormula(strTxt);
       END {IF};
   END {THojaCalc.SetCellText};
 
@@ -2027,16 +2080,13 @@ FUNCTION THojaCalc.SwapColor (nColor: TColor): TColor;
 
 
 procedure THojaCalc.Orientation(row,Col: integer; Angle: integer);
-var
-  CellCursor:  Variant;
-  n:  integer;
 begin
   if DocLoaded then begin
     if IsExcel then begin
-      Programa.ActiveSheet.Cells[row,Col].Orientation:=Angle;
+      Programa.ActiveSheet.Cells[row,Col].Orientation:= Angle;
     end;
     if IsOpenOffice then begin
-      ActiveSheet.getCellByPosition(col-1, row-1).RotateAngle:=Angle*100;
+      ActiveSheet.getCellByPosition(col-1, row-1).RotateAngle:= Angle*100;
     end;
   end;
 end;
