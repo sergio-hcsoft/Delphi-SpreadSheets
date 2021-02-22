@@ -262,7 +262,7 @@ CONST
    xlMDY = 44; //(&H2C)
    xlTimeLeadingZero = 45; //(&H2D)
    xlCellTypeLastCell = 11;
-   
+
   { typedef enum XlVAlign }
   xlVAlignBottom = -4107;
   xlVAlignCenter = -4108;
@@ -306,7 +306,7 @@ CONST
   { NumberFormat, see                                                                 }
   { http://www.openoffice.org/api/docs/common/ref/com/sun/star/util/NumberFormat.html }
   nfALL = 0;  // Description selects all number formats. 
-  nfDEFINED = 1;  // Description selects only user-defined number formats. 
+  nfDEFINED = 1;  // Description selects only user-defined number formats.
   nfDATE = 2;  // Description selects date formats. 
   nfTIME = 4;  // Description selects time formats.
   nfCURRENCY = 8;  // Description selects currency formats. 
@@ -356,6 +356,9 @@ TYPE
                 m_vActiveSheet: variant; //Active sheet.
                 m_vPrograma: variant; //Excel or OpenOfice instance created.
                 m_vDocument: variant; //Document opened.
+                m_rPrecision: integer; //Real numbers decimal places
+                m_iAsyncDelay: integer; //time to sleep on async operations
+                m_sDefSheetName: string; //Default sheet name when not specified
               {$IFDEF COMPILER_7_UP}
                 m_AmericanFormat: TFormatSettings;
               {$ENDIF COMPILER_7_UP} //
@@ -451,6 +454,11 @@ TYPE
                 PROPERTY CellTextByName[Range: string]: string read GetCellTextByName write SetCellTextByName;
                 //Aux functions
                 FUNCTION SwapColor (nColor: TColor): TColor;
+                FUNCTION IsExcelFileExtension(FileName:string):boolean;
+                //Configuration
+                PROPERTY NumberPrecision:integer read m_rPrecision write m_rPrecision default 2;
+                PROPERTY AsynchronousDelay:integer read m_iAsyncDelay write m_iAsyncDelay default 100;
+                PROPERTY DefaultSheetName:string read m_sDefSheetName write m_sDefSheetName; //default 'Sheet'
               END {THojaCalc};
 
 
@@ -476,6 +484,9 @@ CONSTRUCTOR THojaCalc.Create (eMyTipo: TTipoHojaCalc; bMakeVisible: boolean; bRe
 
 
   BEGIN
+    m_rPrecision := 2;
+    m_iAsyncDelay := 100;
+    m_sDefSheetName := 'Sheet';
     m_bKeepAlive := false; //
   //Close all opened things first...
     CloseDoc;
@@ -508,15 +519,11 @@ CONSTRUCTOR THojaCalc.Create (eMyTipo: TTipoHojaCalc; bMakeVisible: boolean; bRe
     m_bVisible := bMakeVisible;
     NewDoc(NOT m_bReUseExisting); // Do NOT add a new sheet an existing WB must be re-used
   //Create an American format to use when sending numbers or dates to excel
-  {$IFDEF COMPILER_12_UP}
+  {$IFDEF COMPILER_15_UP}
     m_AmericanFormat := TFormatSettings.Create(Windows.LOCALE_NEUTRAL);
-
   {$ELSE}
   {$IFDEF COMPILER_8_UP}
     GetLocaleFormatSettings(Windows.LOCALE_NEUTRAL, m_AmericanFormat);
-
-  {$ELSE}
-
   {$ENDIF}
   {$ENDIF}
   {$IFDEF COMPILER_7_UP}
@@ -539,30 +546,33 @@ CONSTRUCTOR THojaCalc.Create (strName: string; bMakeVisible: boolean; bReUseExis
 
 
   BEGIN
+    m_rPrecision := 2;
+    m_iAsyncDelay := 100;
+    m_sDefSheetName := 'Sheet';
     m_eTipo := thcNone; //
   //Store values...
     m_strFileName := strName;
     m_bVisible := bMakeVisible; //
   //Create an American format to use when sending numbers or dates to excel
-  {$IFDEF COMPILER_12_UP}
+  {$IFDEF COMPILER_15_UP}
     m_AmericanFormat := TFormatSettings.Create(Windows.LOCALE_NEUTRAL);
 
   {$ELSE}
   {$IFDEF COMPILER_8_UP}
     GetLocaleFormatSettings(Windows.LOCALE_NEUTRAL, m_AmericanFormat);
-
-  {$ELSE}
-
   {$ENDIF}
   {$ENDIF}
   {$IFDEF COMPILER_7_UP}
+    GetLocaleFormatSettings( 0, m_AmericanFormat);
+    m_AmericanFormat.ThousandSeparator := ',';
+    m_AmericanFormat.DecimalSeparator := '.';
+    m_AmericanFormat.ShortDateFormat := 'mm/dd/yyyy';
+
+  {$ELSE}
   //Will be updated where needed, as they must be saved before and restored afterwards
   //SysUtils.ThousandSeparator := ',';
   //SysUtils.DecimalSeparator := '.';
   //SysUtils.ShortDateFormat := 'mm/dd/yyyy';
-
-  {$ELSE}
-
   {$ENDIF} //
   //Open program and document...
     LoadProg;
@@ -611,11 +621,6 @@ FUNCTION THojaCalc.ConnectToApp (eMyTipo, eReqTipo: TTipoHojaCalc; bReUseExistin
 
 //After you call a preview, for instance, you can check if the user closed the doc.
 FUNCTION THojaCalc.StillConnectedToApp: boolean;
-
-  //VAR
-  //  strOleName: string;
-  //  tmp_Programa: variant;
-
   BEGIN
     result := false;
     CASE m_eTipo OF
@@ -634,19 +639,10 @@ FUNCTION THojaCalc.StillConnectedToApp: boolean;
       ELSE
         exit;
     END; {CASE};
-
-    TRY
-
-    FINALLY
-    END {TRY};
-
-    //result:= NOT (VarIsEmpty(tmp_Programa) OR VarIsNull(tmp_Programa));
   END {THojaCalc.StillConnectedToApp};
 
 
 DESTRUCTOR THojaCalc.Destroy;
-
-
   BEGIN
     IF NOT m_bKeepAlive THEN
       TRY
@@ -673,7 +669,7 @@ PROCEDURE THojaCalc.LoadProg;
     IF ProgLoaded THEN
       CloseProg;
     m_eTipo := thcNone;
-    IF (UpperCase(ExtractFileExt(m_strFileName)) = '.XLS') THEN
+    IF IsExcelFileExtension(m_strFileName) THEN
       BEGIN //Excel is the primary choice...
         m_eTipo := ConnectToApp(thcNone, thcExcel, m_bReUseExisting);
       END {IF}; //
@@ -783,8 +779,8 @@ PROCEDURE THojaCalc.NewDoc (bAddNewSheet: boolean);
         m_vPrograma.Visible := Visible;
         m_vDocument := m_vPrograma.ActiveWorkBook;
         m_vActiveSheet := m_vDocument.ActiveSheet;
-      END {IF};
-    IF IsOpenOffice THEN
+      END {IF}
+    ELSE // IF IsOpenOffice THEN
       BEGIN
         m_vDesktop := m_vPrograma.CreateInstance(strOleOoDesktop); //
       //Optional parameters (visible)...
@@ -795,10 +791,6 @@ PROCEDURE THojaCalc.NewDoc (bAddNewSheet: boolean);
         ActivateSheetByIndex(1);
         m_bFirstAddedSheet := true;
       END {IF};
-
-  //{ Keep only 1 sheet in the workbook }
-  //  WHILE CountSheets > 1 DO
-  //    RemoveSheetByIndex(2);
   END {THojaCalc.NewDoc};
 
 
@@ -824,8 +816,8 @@ PROCEDURE THojaCalc.LoadDoc;
         m_vPrograma.Visible := Visible;
         m_vDocument := m_vPrograma.ActiveWorkBook;
         m_vActiveSheet := m_vDocument.ActiveSheet;
-      END {IF};
-    IF IsOpenOffice THEN
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
       BEGIN
         m_vDesktop := m_vPrograma.CreateInstance(strOleOoDesktop); //
       //Optional parameters (visible)...
@@ -857,8 +849,8 @@ FUNCTION THojaCalc.SaveDoc: boolean;
           BEGIN
             m_vDocument.Save;
             result := true;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vDocument.Store;
             result := true;
@@ -916,8 +908,8 @@ FUNCTION THojaCalc.SaveDocAs (strName: string; bAsExcel97: boolean = false): boo
               m_vDocument.Saveas(strName, 56);
             m_strFileName := strName;
             result := true;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE // IF IsOpenOffice THEN
           BEGIN //
           //I may need 1 or 2 params...
             IF bAsExcel97
@@ -955,8 +947,8 @@ FUNCTION THojaCalc.PrintDoc: boolean;
           BEGIN
             m_vDocument.PrintOut;
             result := true;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN //
           //NOTE: OpenOffice will print all sheets with Printable areas, but if no
           //printable areas are defined in the doc, it will print all entire sheets.
@@ -979,8 +971,8 @@ PROCEDURE THojaCalc.ShowPrintPreview;
       //Force visibility of the doc...
         Visible := true;
         IF IsExcel THEN
-          m_vDocument.PrintOut(,,, true);
-        IF IsOpenOffice THEN
+          m_vDocument.PrintOut(,,, true)
+        ELSE //IF IsOpenOffice THEN
           ooDispatch('.uno:PrintPreview', Unassigned);
       END {IF};
   END {THojaCalc.ShowPrintPreview};
@@ -993,8 +985,8 @@ PROCEDURE THojaCalc.SetVisible (v: boolean);
     IF DocLoaded AND (v <> m_bVisible) THEN
       BEGIN
         IF IsExcel THEN
-          m_vPrograma.Visible := v;
-        IF IsOpenOffice THEN
+          m_vPrograma.Visible := v
+        ELSE //IF IsOpenOffice THEN
           m_vDocument.getCurrentController.getFrame.getContainerWindow.setVisible(v);
         m_bVisible := v;
       END {IF};
@@ -1013,17 +1005,17 @@ PROCEDURE THojaCalc.CloseDoc;
             TRY
               m_vDocument.Dispose;
             EXCEPT
-            END;
-          IF IsExcel THEN
+            END
+          ELSE //IF IsExcel THEN
             TRY
               m_vDocument.close;
             EXCEPT
             END;
         FINALLY
+        //Clean up both "pointer"...
+          m_vDocument := Null;
+          m_vActiveSheet := Null;
         END {TRY}; //
-      //Clean up both "pointer"...
-        m_vDocument := Null;
-        m_vActiveSheet := Null;
       END {IF};
   END {THojaCalc.CloseDoc};
 
@@ -1032,8 +1024,6 @@ FUNCTION THojaCalc.GetDocLoaded: boolean;
 
   VAR
     AttrPtr: Pointer;
-
-
 
   BEGIN
     IF IsExcel AND m_bVisible THEN
@@ -1049,9 +1039,6 @@ FUNCTION THojaCalc.GetDocLoaded: boolean;
             IF NOT assigned(AttrPtr) THEN
               m_vDocument := Unassigned
           END {ELSE};
-      END {IF};
-    IF IsOpenOffice THEN
-      BEGIN
       END {IF};
     result := NOT (VarIsEmpty(m_vDocument) OR VarIsNull(m_vDocument));
   END {THojaCalc.GetDocLoaded};
@@ -1070,44 +1057,43 @@ FUNCTION THojaCalc.GetCountSheets: integer;
 
   BEGIN
     result := 0;
-    IF DocLoaded THEN
-      BEGIN
-        IF IsExcel THEN
-          TRY
-            TRY
-              IF VarIsEmpty(m_vDocument) OR VarIsNull(m_vDocument)
-              THEN
-                vActiveSheet := Unassigned
-              ELSE
-                vActiveSheet := m_vDocument.ActiveSheet;
-              IF VarIsEmpty(vActiveSheet) OR VarIsNull(vActiveSheet)
-              THEN
-                result := 0
-              ELSE
-                result := m_vDocument.Sheets.count;
-            EXCEPT
-              result := 0;
-            END {TRY};
-          FINALLY
-          END {TRY};
-        IF IsOpenOffice THEN
-          TRY
-            TRY
-              vOoSheets := m_vDocument.getSheets;
-              AttrPtr := TVarData(vOoSheets).VDispatch;
-              IF NOT assigned(AttrPtr) THEN
-                vOoSheets := Unassigned;
-              IF VarIsEmpty(vOoSheets) OR VarIsNull(vOoSheets)
-              THEN
-                result := 0
-              ELSE
-                result := vOoSheets.GetCount;
-            EXCEPT
-              result := 0;
-            END {TRY};
-          FINALLY
-          END {TRY};
-      END {IF};
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
+      TRY
+        TRY
+          IF VarIsEmpty(m_vDocument) OR VarIsNull(m_vDocument)
+          THEN
+            vActiveSheet := Unassigned
+          ELSE
+            vActiveSheet := m_vDocument.ActiveSheet;
+          IF VarIsEmpty(vActiveSheet) OR VarIsNull(vActiveSheet)
+          THEN
+            result := 0
+          ELSE
+            result := m_vDocument.Sheets.count;
+        EXCEPT
+          result := 0;
+        END {TRY};
+      FINALLY
+      END {TRY}
+    ELSE //IF IsOpenOffice THEN
+      TRY
+        TRY
+          vOoSheets := m_vDocument.getSheets;
+          AttrPtr := TVarData(vOoSheets).VDispatch;
+          IF NOT assigned(AttrPtr) THEN
+            vOoSheets := Unassigned;
+          IF VarIsEmpty(vOoSheets) OR VarIsNull(vOoSheets)
+          THEN
+            result := 0
+          ELSE
+            result := vOoSheets.GetCount;
+        EXCEPT
+          result := 0;
+        END {TRY};
+      FINALLY
+      END {TRY};
   END {THojaCalc.GetCountSheets};
 
 
@@ -1119,33 +1105,32 @@ FUNCTION THojaCalc.ActivateSheetByIndex (nIndex: integer): boolean;
 
   BEGIN
     result := false;
-    IF DocLoaded THEN
-      BEGIN //
-      //Exists this sheet number?
-        IF (nIndex < 1) THEN
-          RAISE Exception.Create('Can not activate sheet #' + IntToStr(nIndex));
-        WHILE (nIndex > CountSheets) DO
-          BEGIN
-            ActivateSheetByIndex(CountSheets);
-            AddNewSheet('New sheet ' + IntToStr(CountSheets + 1));
-            sleep(100); //Needs time to do it!
-          END {WHILE}; //
-      //Activate it now...
-        IF IsExcel THEN
-          BEGIN
-            m_vDocument.Sheets[nIndex].activate;
-            m_vActiveSheet := m_vDocument.ActiveSheet;
-            result := true;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            m_vActiveSheet := m_vDocument.getSheets.getByIndex(nIndex - 1);
-            IF m_bVisible THEN
-              m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
-            result := true;
-          END {IF};
-        sleep(100); //Asyncronus, so better give it time to make the change
+    IF NOT DocLoaded THEN
+      exit;
+  //Exists this sheet number?
+    IF (nIndex < 1) THEN
+      RAISE Exception.Create('Can not activate sheet #' + IntToStr(nIndex));
+    WHILE (nIndex > CountSheets) DO
+      BEGIN
+        ActivateSheetByIndex(CountSheets);
+        AddNewSheet('New sheet ' + IntToStr(CountSheets + 1));
+        sleep(m_iAsyncDelay); //Needs time to do it!
+      END {WHILE}; //
+  //Activate it now...
+    IF IsExcel THEN
+      BEGIN
+        m_vDocument.Sheets[nIndex].activate;
+        m_vActiveSheet := m_vDocument.ActiveSheet;
+        result := true;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        m_vActiveSheet := m_vDocument.getSheets.getByIndex(nIndex - 1);
+        IF m_bVisible THEN
+          m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
+        result := true;
       END {IF};
+    sleep(m_iAsyncDelay); //Asyncronus, so better give it time to make the change
   END {THojaCalc.ActivateSheetByIndex};
 
 
@@ -1160,43 +1145,42 @@ FUNCTION THojaCalc.ActivateSheetByName (strSheetName: string; bCaseSensitive: bo
 
   BEGIN
     result := false;
-    IF DocLoaded THEN
-      BEGIN
-        IF bCaseSensitive
-        THEN
-          BEGIN //
-          //Find the EXACT name...
-            IF IsExcel THEN
-              BEGIN
-                m_vDocument.Sheets[strSheetName].Select;
-                m_vActiveSheet := m_vDocument.ActiveSheet;
-                result := true;
-              END {IF};
-            IF IsOpenOffice THEN
-              BEGIN
-                m_vActiveSheet := m_vDocument.getSheets.getByName(strSheetName);
-                IF m_bVisible THEN
-                  m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
-                result := true;
-              END {IF};
+    IF NOT DocLoaded THEN
+      exit;
+    IF bCaseSensitive
+    THEN
+      BEGIN //
+      //Find the EXACT name...
+        IF IsExcel THEN
+          BEGIN
+            m_vDocument.Sheets[strSheetName].Select;
+            m_vActiveSheet := m_vDocument.ActiveSheet;
+            result := true;
           END {IF}
-        ELSE
-          BEGIN //
-          //Find the Sheet regardless of the case...
-            vOldActiveSheet := m_vActiveSheet;
-            FOR i := 1 TO GetCountSheets DO
+        ELSE //IF IsOpenOffice THEN
+          BEGIN
+            m_vActiveSheet := m_vDocument.getSheets.getByName(strSheetName);
+            IF m_bVisible THEN
+              m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
+            result := true;
+          END {IF};
+      END {IF}
+    ELSE
+      BEGIN //
+      //Find the Sheet regardless of the case...
+        vOldActiveSheet := m_vActiveSheet;
+        FOR i := 1 TO GetCountSheets DO
+          BEGIN
+            ActivateSheetByIndex(i);
+            IF UpperCase(ActiveSheetName) = UpperCase(strSheetName) THEN
               BEGIN
-                ActivateSheetByIndex(i);
-                IF UpperCase(ActiveSheetName) = UpperCase(strSheetName) THEN
-                  BEGIN
-                    result := true;
-                    Exit;
-                  END {IF};
-              END {FOR}; //
-          //IF NOT found, let the old active sheet active...
-            m_vActiveSheet := vOldActiveSheet;
-          END {ELSE};
-      END {IF};
+                result := true;
+                Exit;
+              END {IF};
+          END {FOR}; //
+      //IF NOT found, let the old active sheet active...
+        m_vActiveSheet := vOldActiveSheet;
+      END {ELSE};
   END {THojaCalc.ActivateSheetByName};
 
 
@@ -1209,10 +1193,12 @@ FUNCTION THojaCalc.GetActiveSheetName: string;
     IF DocLoaded THEN
       BEGIN
         IF IsExcel THEN
-          result := m_vActiveSheet.Name;
-        IF IsOpenOffice THEN
+          result := m_vActiveSheet.Name
+        ELSE //IF IsOpenOffice THEN
           result := m_vActiveSheet.GetName;
-      END {IF};
+      END {IF}
+    ELSE
+      result := '';
   END {THojaCalc.GetActiveSheetName};
 
 
@@ -1225,15 +1211,9 @@ PROCEDURE THojaCalc.SetActiveSheetName (strNewName: string);
       //Clean name first...
         strNewName := ValidateSheetName(strNewName);
         IF IsExcel THEN
-          m_vPrograma.ActiveSheet.Name := strNewName;
-        IF IsOpenOffice THEN
-          BEGIN
-            m_vActiveSheet.setName(strNewName); //
-          //This code always changes the name of "visible" sheet, not active one!
-          //ooParams := VarArrayCreate([0, 0], varVariant);
-          //ooParams[0] := ooCreateValue('Name', strNewName);
-          //ooDispatch('.uno:RenameTable', ooParams);
-          END {IF};
+          m_vPrograma.ActiveSheet.Name := strNewName
+        ELSE //IF IsOpenOffice THEN
+          m_vActiveSheet.setName(strNewName);
       END {IF};
   END {THojaCalc.SetActiveSheetName};
 
@@ -1248,35 +1228,35 @@ FUNCTION THojaCalc.IsActiveSheetProtected: boolean;
     IF DocLoaded THEN
       BEGIN
         IF IsExcel THEN
-          result := m_vActiveSheet.ProtectContents;
-        IF IsOpenOffice THEN
+          result := m_vActiveSheet.ProtectContents
+        ELSE //IF IsOpenOffice THEN
           result := m_vActiveSheet.IsProtected;
       END {IF};
   END {THojaCalc.IsActiveSheetProtected};
 
+
+function THojaCalc.IsExcelFileExtension(FileName: string): boolean;
+begin
+  FileName := UpperCase(ExtractFileExt(m_strFileName));
+  result := (FileName = '.XLS') or (FileName = '.XLSX') or (FileName = '.XLSM') or (FileName = '.XLSB');
+end;
 
 FUNCTION THojaCalc.PrintActiveSheet: boolean;
 
 { WARNING: This function is NOT dual, only works for Excel docs!      }
 { Send active sheet to default printer (as seen in preview window)... }
 
-
   BEGIN
     result := false;
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            m_vActiveSheet.PrintOut;
-            result := true;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            RAISE Exception.Create('Function "PrintActiveSheet" still not working in OpenOffice!');//
-          //ActiveSheet.Print;
-            result := false;
-          END {IF};
-      END {IF};
+        m_vActiveSheet.PrintOut;
+        result := true;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      RAISE Exception.Create('Function "PrintActiveSheet" still not working in OpenOffice!');//
   END {THojaCalc.PrintActiveSheet};
 
 
@@ -1293,49 +1273,44 @@ FUNCTION THojaCalc.PrintSheetsUntil (strLastSheetName: string): boolean;
 
   BEGIN
     result := false;
-    IF DocLoaded
-    THEN
-      BEGIN
-        IF IsExcel THEN
-          BEGIN //
-          //Macro from Excel:
-          //  Sheets(Array("Hoja1", "Hoja2")).Select
-          //  ActiveWindow.SelectedSheets.PrintOut Copies:=1, Collate:=True
-          //
-          //Which sheet number correspond to the one previous to "LastSheetName"?
-            Last := 0;
-            FOR i := 2 TO CountSheets DO
-              BEGIN
-                ActivateSheetByIndex(i);
-                IF UpperCase(ActiveSheetName) = UpperCase(strLastSheetName) THEN
-                  BEGIN
-                    Last := i - 1;
-                    break;
-                  END {IF};
-              END {FOR}; //
-          //Not found?
-            IF Last = 0 THEN
-              exit; //
-          //Create an array of variants -windows standard type- this big...
-            vHojas := VarArrayCreate([1, Last], varVariant); //
-          //Fill it with the Sheet names...
-            FOR i := 1 TO Last DO
-              BEGIN
-                ActivateSheetByIndex(i);
-                vHojas[i] := ActiveSheetName;
-              END {FOR}; //
-          //Print all this array of sheets...
-            m_vPrograma.Sheets[vHojas].Select;
-            m_vPrograma.ActiveWindow.SelectedSheets.PrintOut; //
-          //Done!
-            result := true;
-          END {IF};
-        IF IsOpenOffice THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
+      BEGIN //
+      //Macro from Excel:
+      //  Sheets(Array("Hoja1", "Hoja2")).Select
+      //  ActiveWindow.SelectedSheets.PrintOut Copies:=1, Collate:=True
+      //
+      //Which sheet number correspond to the one previous to "LastSheetName"?
+        Last := 0;
+        FOR i := 2 TO CountSheets DO
           BEGIN
-            RAISE Exception.Create('Function "PrintSheetsUntil" not working in OpenOffice!');
-            result := false;
-          END {IF};
-      END {IF};
+            ActivateSheetByIndex(i);
+            IF UpperCase(ActiveSheetName) = UpperCase(strLastSheetName) THEN
+              BEGIN
+                Last := i - 1;
+                break;
+              END {IF};
+          END {FOR}; //
+      //Not found?
+        IF Last = 0 THEN
+          exit; //
+      //Create an array of variants -windows standard type- this big...
+        vHojas := VarArrayCreate([1, Last], varVariant); //
+      //Fill it with the Sheet names...
+        FOR i := 1 TO Last DO
+          BEGIN
+            ActivateSheetByIndex(i);
+            vHojas[i] := ActiveSheetName;
+          END {FOR}; //
+      //Print all this array of sheets...
+        m_vPrograma.Sheets[vHojas].Select;
+        m_vPrograma.ActiveWindow.SelectedSheets.PrintOut; //
+      //Done!
+        result := true;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      RAISE Exception.Create('Function "PrintSheetsUntil" not working in OpenOffice!');
   END {THojaCalc.PrintSheetsUntil};
 
 
@@ -1351,30 +1326,29 @@ PROCEDURE THojaCalc.AddNewSheet (strNewName: string; bRemoveDummySheets: boolean
     strNewName := ValidateSheetName(strNewName);
     IF NOT DocLoaded THEN
       NewDoc(true);
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            m_vDocument.WorkSheets.Add(null, m_vDocument.ActiveSheet, 1);
-            m_vDocument.ActiveSheet.Name := strNewName;
-            IF bRemoveDummySheets AND m_bFirstAddedSheet THEN
-              RemoveAllSheetsExcept(strNewName, true); //
-          //Active sheet has move to this new one, so I need to update the VAR
-            m_vActiveSheet := m_vDocument.ActiveSheet;
-            m_bFirstAddedSheet := false;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            vOoSheets := m_vDocument.getSheets;
-            vOoSheets.insertNewByName(strNewName, 1);
-            IF bRemoveDummySheets AND m_bFirstAddedSheet THEN
-              RemoveAllSheetsExcept(strNewName, true); //
-          //Redefine active sheet to this new one
-            m_vActiveSheet := vOoSheets.getByName(strNewName);
-            IF m_bVisible THEN
-              m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
-            m_bFirstAddedSheet := false;
-          END {IF};
+        m_vDocument.WorkSheets.Add(null, m_vDocument.ActiveSheet, 1);
+        m_vDocument.ActiveSheet.Name := strNewName;
+        IF bRemoveDummySheets AND m_bFirstAddedSheet THEN
+          RemoveAllSheetsExcept(strNewName, true); //
+      //Active sheet has move to this new one, so I need to update the VAR
+        m_vActiveSheet := m_vDocument.ActiveSheet;
+        m_bFirstAddedSheet := false;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        vOoSheets := m_vDocument.getSheets;
+        vOoSheets.insertNewByName(strNewName, 1);
+        IF bRemoveDummySheets AND m_bFirstAddedSheet THEN
+          RemoveAllSheetsExcept(strNewName, true); //
+      //Redefine active sheet to this new one
+        m_vActiveSheet := vOoSheets.getByName(strNewName);
+        IF m_bVisible THEN
+          m_vDocument.getCurrentController.setactivesheet(m_vActiveSheet);
+        m_bFirstAddedSheet := false;
       END {IF};
   END {THojaCalc.AddNewSheet};
 
@@ -1388,21 +1362,20 @@ PROCEDURE THojaCalc.RemoveSheetByName (strOldName: string);
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            m_vDocument.WorkSheets[strOldName].Delete;
-          //Active sheet might have moved, so I need to update the VAR
-            m_vActiveSheet := m_vDocument.ActiveSheet;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            vOoSheets := m_vDocument.getSheets;
-            vOoSheets.removeByName(strOldName); //
-          //Redefine active sheet to the current one
-            m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
-          END {IF};
+        m_vDocument.WorkSheets[strOldName].Delete;
+      //Active sheet might have moved, so I need to update the VAR
+        m_vActiveSheet := m_vDocument.ActiveSheet;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        vOoSheets := m_vDocument.getSheets;
+        vOoSheets.removeByName(strOldName); //
+      //Redefine active sheet to the current one
+        m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
       END {IF};
   END {THojaCalc.RemoveSheetByName};
 
@@ -1417,25 +1390,24 @@ PROCEDURE THojaCalc.RemoveSheetByIndex (nIndex: integer);
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF (nIndex < 1) THEN
+      RAISE Exception.Create('Can not remove sheet #' + IntToStr(nIndex));
+    IF IsExcel THEN
       BEGIN
-        IF (nIndex < 1) THEN
-          RAISE Exception.Create('Can not remove sheet #' + IntToStr(nIndex));
-        IF IsExcel THEN
-          BEGIN
-            m_vDocument.Sheets[nIndex].Delete;
-          //Active sheet might have moved, so I need to update the VAR
-            m_vActiveSheet := m_vDocument.ActiveSheet;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            vOoSheets := m_vDocument.getSheets;
-            vOoSheet := vOoSheets.getByIndex(nIndex - 1);
-            strOldName := vOoSheet.GetName;
-            vOoSheets.removeByName(strOldName); //
-          //Redefine active sheet to the current one
-            m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
-          END {IF};
+        m_vDocument.Sheets[nIndex].Delete;
+      //Active sheet might have moved, so I need to update the VAR
+        m_vActiveSheet := m_vDocument.ActiveSheet;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        vOoSheets := m_vDocument.getSheets;
+        vOoSheet := vOoSheets.getByIndex(nIndex - 1);
+        strOldName := vOoSheet.GetName;
+        vOoSheets.removeByName(strOldName); //
+      //Redefine active sheet to the current one
+        m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
       END {IF};
   END {THojaCalc.RemoveSheetByIndex};
 
@@ -1451,46 +1423,45 @@ PROCEDURE THojaCalc.RemoveAllSheetsExcept (strOldName: string; bCaseSensitive: b
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    nIndex := 1;
+    IF NOT bCaseSensitive THEN
+      strOldName := UpperCase(strOldName);
+    IF IsExcel THEN
       BEGIN
-        nIndex := 1;
-        IF NOT bCaseSensitive THEN
-          strOldName := UpperCase(strOldName);
-        IF IsExcel THEN
+        WHILE nIndex <= CountSheets DO
           BEGIN
-            WHILE nIndex <= CountSheets DO
-              BEGIN
-                vSheet := m_vDocument.Sheets[nIndex];
-                strName := vSheet.Name;
-                IF (bCaseSensitive AND (strName = strOldName)) //
-                    OR (NOT bCaseSensitive AND (UpperCase(strName) = strOldName))
-                THEN
-                  inc(nIndex)
-                ELSE
-                  m_vDocument.Sheets[nIndex].Delete;
-              END {WHILE}; //
-          //Activate remaining sheet and update the VAR
-            m_vActiveSheet := m_vDocument.ActiveSheet;
-          END {IF};
-        IF IsOpenOffice THEN
+            vSheet := m_vDocument.Sheets[nIndex];
+            strName := vSheet.Name;
+            IF (bCaseSensitive AND (strName = strOldName)) //
+                OR (NOT bCaseSensitive AND (UpperCase(strName) = strOldName))
+            THEN
+              inc(nIndex)
+            ELSE
+              m_vDocument.Sheets[nIndex].Delete;
+          END {WHILE}; //
+      //Activate remaining sheet and update the VAR
+        m_vActiveSheet := m_vDocument.ActiveSheet;
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        WHILE nIndex <= CountSheets DO
           BEGIN
-            WHILE nIndex <= CountSheets DO
+            vOoSheets := m_vDocument.getSheets;
+            vOoSheet := vOoSheets.getByIndex(nIndex - 1);
+            strName := vOoSheet.GetName;
+            IF (bCaseSensitive AND (strName = strOldName)) //
+                OR (NOT bCaseSensitive AND (UpperCase(strName) = strOldName))
+            THEN
+              inc(nIndex)
+            ELSE
               BEGIN
-                vOoSheets := m_vDocument.getSheets;
-                vOoSheet := vOoSheets.getByIndex(nIndex - 1);
-                strName := vOoSheet.GetName;
-                IF (bCaseSensitive AND (strName = strOldName)) //
-                    OR (NOT bCaseSensitive AND (UpperCase(strName) = strOldName))
-                THEN
-                  inc(nIndex)
-                ELSE
-                  BEGIN
-                    vOoSheets.removeByName(strName); //
-                  END {ELSE};
-              END {WHILE}; //
-          //Activate remaining sheet
-            m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
-          END {IF};
+                vOoSheets.removeByName(strName); //
+              END {ELSE};
+          END {WHILE}; //
+      //Activate remaining sheet
+        m_vActiveSheet := m_vDocument.getCurrentController.getActiveSheet;
       END {IF};
   END {THojaCalc.RemoveAllSheetsExcept};
 
@@ -1503,8 +1474,8 @@ begin
   if DocLoaded then begin
     if IsExcel then begin
       result := Programa.ActiveSheet.Cells.SpecialCells(xlCellTypeLastCell, EmptyParam).Row;
-    end;
-    if IsOpenOffice then begin
+    end
+    else begin //if IsOpenOffice then begin
       oCursor := ActiveSheet.createCursor;
       oCursor.gotoEndOfUsedArea(False);
       result := oCursor.RangeAddress.EndRow;
@@ -1520,8 +1491,8 @@ begin
   if DocLoaded then begin
     if IsExcel then begin
       result := Programa.ActiveSheet.Cells.SpecialCells(xlCellTypeLastCell, EmptyParam).Column;
-    end;
-    if IsOpenOffice then begin
+    end
+    else begin //if IsOpenOffice then begin
       oCursor := ActiveSheet.createCursor;
       oCursor.gotoEndOfUsedArea(False);
       result := oCursor.RangeAddress.EndColumn;
@@ -1546,7 +1517,7 @@ FUNCTION THojaCalc.ValidateSheetName (strName: string): string;
     result := StringReplace(result, ']', '_', [rfReplaceAll]);
     result := StringReplace(result, '"', '_', [rfReplaceAll]);
     IF (Trim(result) = '') THEN
-      result := 'Plan' + IntToStr(CountSheets);
+      result := m_sDefSheetName + IntToStr(CountSheets);
     result := Copy(result, 1, 31);
   END {THojaCalc.ValidateSheetName};
 
@@ -1567,8 +1538,8 @@ FUNCTION THojaCalc.GetCellText (row, col: integer): string;
     IF DocLoaded THEN
       BEGIN
         IF IsExcel THEN
-          result := m_vActiveSheet.Cells[row, col].Text;
-        IF IsOpenOffice THEN
+          result := m_vActiveSheet.Cells[row, col].Text
+        ELSE //IF IsOpenOffice THEN
           result := m_vActiveSheet.getCellByPosition(col - 1, row - 1).getFormula;
       END {IF};
   END {THojaCalc.GetCellText};
@@ -1584,10 +1555,9 @@ PROCEDURE THojaCalc.SetCellText (row, col: integer; strTxt: string);
           BEGIN
             m_vActiveSheet.Cells[row, col].Select;
             m_vPrograma.ActiveCell.Value := strTxt;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           m_vActiveSheet.getCellByPosition(col - 1, row - 1).string := strTxt;
-          //m_vActiveSheet.getCellByPosition(col - 1, row - 1).setFormula(strTxt);
       END {IF};
   END {THojaCalc.SetCellText};
 
@@ -1601,8 +1571,8 @@ FUNCTION THojaCalc.GetCellFormula (row, col: integer): string;
     IF DocLoaded THEN
       BEGIN
         IF IsExcel THEN
-          result := m_vActiveSheet.Cells[row, col].Formula;
-        IF IsOpenOffice THEN
+          result := m_vActiveSheet.Cells[row, col].Formula
+        ELSE //IF IsOpenOffice THEN
           result := m_vActiveSheet.getCellByPosition(col - 1, row - 1).getFormula;
       END {IF};
   END {THojaCalc.GetCellFormula};
@@ -1621,8 +1591,8 @@ PROCEDURE THojaCalc.SetCellFormula (row, col: integer; strTxt: string);
           BEGIN
             strRange := m_vPrograma.Range[m_vActiveSheet.Cells[row, col], m_vActiveSheet.Cells[row, col]].Address;
             m_vPrograma.Range[strRange].Formula := strTxt;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           m_vActiveSheet.getCellByPosition(col - 1, row - 1).setFormula(strTxt);
       END {IF};
   END {THojaCalc.SetCellFormula};
@@ -1653,17 +1623,19 @@ PROCEDURE THojaCalc.SendNumber (row, col: integer; v: double);
   //a text in OpenOffice, as it always work OK, with or without the '=' char.
   //
   {$IFDEF COMPILER_7_UP}
-    CellFormula[row, col] := '=' + Format('%f', [v], m_AmericanFormat); 
+    CellFormula[row, col] := '=' + Format('%.' + InttoStr(m_rPrecision) + 'f', [v], m_AmericanFormat);
 
   {$ELSE COMPILER_7_UP}
     saveThousandSeparator := SysUtils.ThousandSeparator;
     saveDecimalSeparator := SysUtils.DecimalSeparator;
-    SysUtils.ThousandSeparator := ',';
-    SysUtils.DecimalSeparator := '.';
-    CellFormula[row, col] := '=' + Format('%f', [v]);
-    SysUtils.ThousandSeparator := saveThousandSeparator;
-    SysUtils.DecimalSeparator := saveDecimalSeparator;
-
+    TRY
+      SysUtils.ThousandSeparator := ',';
+      SysUtils.DecimalSeparator := '.';
+      CellFormula[row, col] := '=' + Format('%.' + IntToStr(m_rPrecision) + 'f', [v]);
+    FINALLY
+      SysUtils.ThousandSeparator := saveThousandSeparator;
+      SysUtils.DecimalSeparator := saveDecimalSeparator;
+    END;
   {$ENDIF COMPILER_7_UP} //
   //Note: format string '%f' doesn't show any ThousanSeparator, don't use '%n'!
   END {THojaCalc.SendNumber};
@@ -1684,9 +1656,12 @@ PROCEDURE THojaCalc.SendDate (row, col: integer; v: TDate);
 
   {$ELSE COMPILER_7_UP}
     saveShortDateFormat := SysUtils.ShortDateFormat;
-    SysUtils.ShortDateFormat := 'mm/dd/yyyy';
-    CellText[row, col] := FormatDateTime('ddddd', v);
-    SysUtils.ShortDateFormat := saveShortDateFormat;
+    TRY
+      SysUtils.ShortDateFormat := 'mm/dd/yyyy';
+      CellText[row, col] := FormatDateTime('ddddd', v);
+    FINALLY
+      SysUtils.ShortDateFormat := saveShortDateFormat;
+    END;
 
   {$ENDIF COMPILER_7_UP} //
   //OpenOffice need to be set to Date Format or it will show an integer
@@ -1699,16 +1674,16 @@ PROCEDURE THojaCalc.SendDate (row, col: integer; v: TDate);
       // 33   Oct 30
       // 34   October
       // 35   4th quarter 06
-      // 36   10/30/2006 
-      // 37   10/30/06 
-      // 38   Monday, October 30, 2006 
-      // 39   Oct 30, 06 
-      // 40   05:45 
-      // 41   05:45:36 
-      // 42   05:45 AM 
-      // 43   05:45:36 AM 
-      // 44   936485:45:36 
-      // 45   45:36.00 
+      // 36   10/30/2006
+      // 37   10/30/06
+      // 38   Monday, October 30, 2006
+      // 39   Oct 30, 06
+      // 40   05:45
+      // 41   05:45:36
+      // 42   05:45 AM
+      // 43   05:45:36 AM
+      // 44   936485:45:36
+      // 45   45:36.00
       // 46   936485:45:36.00      //37 = Short date format, usually DD/MM/YY
       //36 = Long date format, usually DD/MM/YYYY
         m_vActiveSheet.getCellByPosition(col - 1, row - 1).NumberFormat := 36; //
@@ -1737,27 +1712,26 @@ FUNCTION THojaCalc.GetCellTextByName (strRange: string): string;
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            result := m_vPrograma.Range[strRange].Text; //Set 'Formula' but Get 'Text';
+        result := m_vPrograma.Range[strRange].Text; //Set 'Formula' but Get 'Text';
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        vOldActiveSheet := m_vActiveSheet; //
+      //If range is in the form 'NewSheet!A1' then first change sheet to 'NewSheet'
+        nPosExcl := pos('!', strRange);
+        IF nPosExcl > 0 THEN
+          BEGIN //
+          //Activate the proper sheet...
+            IF NOT ActivateSheetByName(Copy(strRange, 1, nPosExcl - 1), false) THEN
+              RAISE Exception.Create('Sheet "' + Copy(strRange, 1, nPosExcl - 1) + '" not present in the document.');
+            strRange := Copy(strRange, nPosExcl + 1, 999);
           END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            vOldActiveSheet := m_vActiveSheet; //
-          //If range is in the form 'NewSheet!A1' then first change sheet to 'NewSheet'
-            nPosExcl := pos('!', strRange);
-            IF nPosExcl > 0 THEN
-              BEGIN //
-              //Activate the proper sheet...
-                IF NOT ActivateSheetByName(Copy(strRange, 1, nPosExcl - 1), false) THEN
-                  RAISE Exception.Create('Sheet "' + Copy(strRange, 1, nPosExcl - 1) + '" not present in the document.');
-                strRange := Copy(strRange, nPosExcl + 1, 999);
-              END {IF};
-            result := m_vActiveSheet.getCellRangeByName(strRange).getCellByPosition(0, 0).getFormula;
-            m_vActiveSheet := vOldActiveSheet;
-          END {IF};
+        result := m_vActiveSheet.getCellRangeByName(strRange).getCellByPosition(0, 0).getFormula;
+        m_vActiveSheet := vOldActiveSheet;
       END {IF};
   END {THojaCalc.GetCellTextByName};
 
@@ -1770,27 +1744,26 @@ PROCEDURE THojaCalc.SetCellTextByName (strRange: string; strTxt: string);
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            m_vPrograma.Range[strRange].formula := strTxt;
+        m_vPrograma.Range[strRange].formula := strTxt;
+      END {IF}
+    ELSE IF IsOpenOffice THEN
+      BEGIN
+        vOldActiveSheet := m_vActiveSheet; //
+      //If range is in the form 'NewSheet!A1' then first change sheet to 'NewSheet'
+        nPosExcl := pos('!', strRange);
+        IF nPosExcl > 0 THEN
+          BEGIN //
+          //Activate the proper sheet...
+            IF NOT ActivateSheetByName(Copy(strRange, 1, nPosExcl - 1), false) THEN
+              RAISE Exception.Create('Sheet "' + Copy(strRange, 1, nPosExcl - 1) + '" not present in the document.');
+            strRange := Copy(strRange, nPosExcl + 1, 999);
           END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            vOldActiveSheet := m_vActiveSheet; //
-          //If range is in the form 'NewSheet!A1' then first change sheet to 'NewSheet'
-            nPosExcl := pos('!', strRange);
-            IF nPosExcl > 0 THEN
-              BEGIN //
-              //Activate the proper sheet...
-                IF NOT ActivateSheetByName(Copy(strRange, 1, nPosExcl - 1), false) THEN
-                  RAISE Exception.Create('Sheet "' + Copy(strRange, 1, nPosExcl - 1) + '" not present in the document.');
-                strRange := Copy(strRange, nPosExcl + 1, 999);
-              END {IF};
-            m_vActiveSheet.getCellRangeByName(strRange).getCellByPosition(0, 0).SetFormula(strTxt);
-            m_vActiveSheet := vOldActiveSheet;
-          END {IF};
+        m_vActiveSheet.getCellRangeByName(strRange).getCellByPosition(0, 0).SetFormula(strTxt);
+        m_vActiveSheet := vOldActiveSheet;
       END {IF};
   END {THojaCalc.SetCellTextByName};
 
@@ -1804,8 +1777,8 @@ PROCEDURE THojaCalc.FontColor (row, col: integer; color: TColor);
         IF IsExcel THEN
           BEGIN
             m_vPrograma.ActiveSheet.Cells[row, col].Font.Color := color;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN {swap bytes of color}
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).CharColor := SwapColor(color);
           END {IF};
@@ -1822,8 +1795,8 @@ PROCEDURE THojaCalc.BackgroundColor (row, col: integer; color: TColor);
         IF IsExcel THEN
           BEGIN
             m_vPrograma.ActiveSheet.Cells[row, col].Interior.Color := color;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN {swap bytes of color}
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).CellBackColor := SwapColor(color);
           END {IF};
@@ -1840,8 +1813,8 @@ PROCEDURE THojaCalc.FontSize (row, col, size: integer);
         IF IsExcel THEN
           BEGIN
             m_vPrograma.ActiveSheet.Cells[row, col].Font.Size := size;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).getText.createTextCursor.CharHeight := size;
           END {IF};
@@ -1860,31 +1833,30 @@ PROCEDURE THojaCalc.HorizontalAlignment (row, col: integer; ha: TAlignment);
 
 
   BEGIN
-    IF DocLoaded THEN
+    IF NOT DocLoaded THEN
+      exit;
+    IF IsExcel THEN
       BEGIN
-        IF IsExcel THEN
-          BEGIN
-            CASE ha OF
-              taLeftJustify:
-                m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignLeft;
-              taRightJustify:
-                m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignRight;
-              taCenter:
-                m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignCenter;
-              ELSE
-            END {CASE};
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
-            CASE ha OF
-              taLeftJustify:
-                m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignLeft;
-              taRightJustify:
-                m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignRight;
-              taCenter:
-                m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignCenter;
-            END {CASE};
-          END {IF};
+        CASE ha OF
+          taLeftJustify:
+            m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignLeft;
+          taRightJustify:
+            m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignRight;
+          taCenter:
+            m_vPrograma.ActiveSheet.Cells[row, col].HorizontalAlignment := xlHAlignCenter;
+          ELSE
+        END {CASE};
+      END {IF}
+    ELSE //IF IsOpenOffice THEN
+      BEGIN
+        CASE ha OF
+          taLeftJustify:
+            m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignLeft;
+          taRightJustify:
+            m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignRight;
+          taCenter:
+            m_vActiveSheet.getCellByPosition(col - 1, row - 1).HoriJustify := ooHAlignCenter;
+        END {CASE};
       END {IF};
   END {THojaCalc.HorizontalAlignment};
 
@@ -1902,8 +1874,8 @@ PROCEDURE THojaCalc.Bold (row, col: integer);
         IF IsExcel THEN
           BEGIN
             m_vPrograma.ActiveSheet.Cells[row, col].Font.Bold := true;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).getText.createTextCursor.CharWeight := ooBold;
           END {IF};
@@ -1923,8 +1895,8 @@ PROCEDURE THojaCalc.Italic (row, col: integer);
         IF IsExcel THEN
           BEGIN
             m_vPrograma.ActiveSheet.Cells[row, col].Font.Italic := true;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).getText.createTextCursor.CharPosture := ooItalic;
           END {IF};
@@ -1950,8 +1922,8 @@ PROCEDURE THojaCalc.Underline (row, col: integer; eOoUnderlineStyle: TOoUnderlin
               ELSE {map all other values to sinlge}
                 m_vPrograma.ActiveSheet.Cells[row, col].Font.Underline := xlUnderlineStyleSingle;
             END {CASE};
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vActiveSheet.getCellByPosition(col - 1, row - 1).getText.createTextCursor.CharUnderline := ord(eOoUnderlineStyle);
           END {IF};
@@ -1977,8 +1949,8 @@ PROCEDURE THojaCalc.ColumnWidth (col, width: integer);
             IF Width > MaxWidthExcel THEN
               Width := MaxWidthExcel;
             m_vPrograma.ActiveSheet.Cells[1, col].ColumnWidth := Width;
-          END {IF};
-        IF IsOpenOffice THEN
+          END {IF}
+        ELSE //IF IsOpenOffice THEN
           BEGIN
             m_vActiveSheet.getCellByPosition(col - 1, 0).getColumns.getByIndex(0).Width := width;
           END {IF};
@@ -1995,9 +1967,6 @@ PROCEDURE THojaCalc.NumberFormat (col, width: integer; strNumberFormat: string);
         IF IsExcel THEN
           BEGIN //
             m_vPrograma.ActiveSheet.Cells[1, col].NumberFormat := strNumberFormat;
-          END {IF};
-        IF IsOpenOffice THEN
-          BEGIN
           END {IF};
       END {IF};
   END {THojaCalc.NumberFormat};
@@ -2027,18 +1996,12 @@ FUNCTION THojaCalc.ooCreateValue (strOoName: string; vOoData: variant): variant;
 
 
   BEGIN
-    IF IsOpenOffice
-    THEN
-      BEGIN
-        vOoReflection := m_vPrograma.createInstance('com.sun.star.reflection.CoreReflection');
-        vOoReflection.forName('com.sun.star.beans.PropertyValue').createObject(result);
-        result.Name := strOoName;
-        result.Value := vOoData;
-      END {IF}
-    ELSE
-      BEGIN
-        RAISE Exception.Create('ooValue imposible to create, load OpenOffice first!');
-      END {ELSE};
+    IF NOT IsOpenOffice THEN
+      RAISE Exception.Create('ooValue imposible to create, load OpenOffice first!');
+    vOoReflection := m_vPrograma.createInstance('com.sun.star.reflection.CoreReflection');
+    vOoReflection.forName('com.sun.star.beans.PropertyValue').createObject(result);
+    result.Name := strOoName;
+    result.Value := vOoData;
   END {THojaCalc.ooCreateValue};
 
 
@@ -2049,19 +2012,13 @@ PROCEDURE THojaCalc.ooDispatch (strOoCommand: string; vOoParams: variant);
 
 
   BEGIN
-    IF DocLoaded AND IsOpenOffice
-    THEN
-      BEGIN
-        IF (VarIsEmpty(vOoParams) OR VarIsNull(vOoParams)) THEN
-          vOoParams := VarArrayCreate([0, - 1], varVariant);
-        vOoFrame := m_vDocument.getCurrentController.getFrame;
-        vOoDispatcher := m_vPrograma.createInstance('com.sun.star.frame.DispatchHelper');
-        vOoDispatcher.executeDispatch(vOoFrame, strOoCommand, '', 0, vOoParams);
-      END {IF}
-    ELSE
-      BEGIN
-        RAISE Exception.Create('Dispatch imposible, load a OpenOffice doc first!');
-      END {ELSE};
+    IF NOT (DocLoaded AND IsOpenOffice) THEN
+      RAISE Exception.Create('Dispatch imposible, load a OpenOffice doc first!');
+    IF (VarIsEmpty(vOoParams) OR VarIsNull(vOoParams)) THEN
+      vOoParams := VarArrayCreate([0, - 1], varVariant);
+    vOoFrame := m_vDocument.getCurrentController.getFrame;
+    vOoDispatcher := m_vPrograma.createInstance('com.sun.star.frame.DispatchHelper');
+    vOoDispatcher.executeDispatch(vOoFrame, strOoCommand, '', 0, vOoParams);
   END {THojaCalc.ooDispatch};
 
 
@@ -2084,8 +2041,8 @@ begin
   if DocLoaded then begin
     if IsExcel then begin
       Programa.ActiveSheet.Cells[row,Col].Orientation:= Angle;
-    end;
-    if IsOpenOffice then begin
+    end
+    else begin //if IsOpenOffice then begin
       ActiveSheet.getCellByPosition(col-1, row-1).RotateAngle:= Angle*100;
     end;
   end;
@@ -2097,8 +2054,8 @@ begin
   if DocLoaded then begin
     if IsExcel then begin
       Programa.ActiveSheet.Columns[col].AutoFit;
-    end;
-    if IsOpenOffice then begin
+    end
+    else begin //if IsOpenOffice then begin
       ActiveSheet.getColumns.getByIndex(col-1).OptimalWidth:=true;
     end;
   end;
